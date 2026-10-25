@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>AI 极速拍题器 v4</title>
+  <title>AI 极速拍题器 v6</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { background: #000; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
@@ -30,9 +31,9 @@
   <div class="top-bar">
     <div class="status">
       <div class="dot"></div>
-      <span id="statusText">v4 极速直连就绪</span>
+      <span id="statusText">v6 双通道并发就绪</span>
     </div>
-    <button class="room-btn" id="roomBtn">暗号: my888</button>
+    <button class="room-btn" id="roomBtn">暗号: zw999</button>
   </div>
 
   <div class="viewport">
@@ -56,11 +57,11 @@
     </div>
   </div>
 
-  <div id="toast" class="toast">? 已秒传</div>
+  <div id="toast" class="toast">⚡ 已秒传</div>
   <canvas id="canvas" style="display:none"></canvas>
 
   <script>
-    let roomCode = localStorage.getItem('ai_snap_room') || 'my888';
+    let roomCode = localStorage.getItem('ai_snap_room') || 'zw999';
     const roomBtn = document.getElementById('roomBtn');
     roomBtn.textContent = `暗号: ${roomCode}`;
     roomBtn.onclick = () => {
@@ -68,10 +69,22 @@
       if (next && next.trim()) {
         roomCode = next.trim();
         localStorage.setItem('ai_snap_room', roomCode);
-        roomBtn.textContent = `暗号: ${roomCode}`;
+        location.reload();
       }
     };
 
+    // 1. 初始化多节点 MQTT 客户端（主力极速通道）
+    const mqttClients = [];
+    if (typeof mqtt !== 'undefined') {
+      ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'].forEach(url => {
+        try {
+          const c = mqtt.connect(url, { keepalive: 30, reconnectPeriod: 3000 });
+          mqttClients.push(c);
+        } catch (e) {}
+      });
+    }
+
+    // 2. 启动后置摄像头
     const video = document.getElementById('video');
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -106,26 +119,43 @@
       setTimeout(() => { toast.style.display = 'none'; }, 1500);
     }
 
-    // 使用免预检的简单 POST 请求直接发送二进制或 Base64
+    // 3. 双通道并发发送（MQTT + HTTPS Stream 同时推送，任一成功即达）
     async function sendImage(canvasEl) {
-      showToast('?? 正在秒传...');
+      showToast('🚀 正在秒传...');
+      const dataUrl = canvasEl.toDataURL('image/jpeg', 0.72);
+      const snapId = 'snap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const payloadStr = JSON.stringify({ id: snapId, ts: Date.now(), dataUrl: dataUrl });
+      const sizeKB = Math.round(dataUrl.length / 1024);
+
+      let notified = false;
+      function markSuccess() {
+        if (notified) return;
+        notified = true;
+        if (navigator.vibrate) navigator.vibrate(40);
+        showToast(`⚡ 已秒传 (${sizeKB}KB)`);
+      }
+
+      // 通道一：MQTT 瞬间广播
+      const mqttTopic = `ai_snap_v6_mqtt/${roomCode}`;
+      mqttClients.forEach(c => {
+        if (c && c.connected) {
+          c.publish(mqttTopic, payloadStr, { qos: 0 }, (err) => {
+            if (!err) markSuccess();
+          });
+        }
+      });
+
+      // 通道二：HTTPS 二进制推送兜底
       canvasEl.toBlob(async (blob) => {
         if (!blob) return;
         try {
-          const res = await fetch(`https://ntfy.sh/ai_snap_v4_${roomCode}`, {
+          const res = await fetch(`https://ntfy.sh/ai_snap_v6_stream_${roomCode}`, {
             method: 'POST',
             body: blob
           });
-          if (res.ok) {
-            if (navigator.vibrate) navigator.vibrate(40);
-            showToast(`? 已秒传 (${Math.round(blob.size / 1024)}KB)`);
-          } else {
-            showToast('发送受阻: ' + res.status, true);
-          }
-        } catch (e) {
-          showToast('网络异常，请检查连接', true);
-        }
-      }, 'image/jpeg', 0.75);
+          if (res.ok) markSuccess();
+        } catch (e) {}
+      }, 'image/jpeg', 0.72);
     }
 
     function captureAndSend(cropToBox = true) {
@@ -155,7 +185,7 @@
         sh = boxRect.height * scale;
       }
 
-      const maxDim = 1100;
+      const maxDim = 1050;
       const outScale = Math.min(1, maxDim / Math.max(sw, sh));
       canvas.width = Math.round(sw * outScale);
       canvas.height = Math.round(sh * outScale);
@@ -172,7 +202,7 @@
       if (!file) return;
       const img = new Image();
       img.onload = () => {
-        const maxDim = 1100;
+        const maxDim = 1050;
         const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
