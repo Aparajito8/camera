@@ -4,49 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>AI 极速拍题器</title>
-  <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+  <title>AI 极速拍题器 v4</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body { background: #000; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
-    
-    /* 顶部状态与设置栏 */
     .top-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent); }
     .status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
-    .dot.online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
     .room-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 4px 10px; border-radius: 14px; font-size: 12px; backdrop-filter: blur(4px); }
-
-    /* 视频取景与瞄准框 */
     .viewport { position: relative; flex: 1; width: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
     video { width: 100%; height: 100%; object-fit: cover; }
-    
-    /* 遮罩与高亮瞄准框 */
     .aim-box { position: absolute; width: 90%; height: 32%; border: 2px solid #38bdf8; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); pointer-events: none; transition: height 0.1s; }
     .aim-box::before { content: "将题目对准框内 · 按快门直接裁切秒发"; position: absolute; top: -26px; left: 0; right: 0; text-align: center; font-size: 12px; color: #38bdf8; text-shadow: 0 1px 2px #000; }
-
-    /* 底部控制区 */
     .controls { position: absolute; bottom: 0; left: 0; right: 0; z-index: 20; padding: 16px 24px 32px; background: linear-gradient(to top, rgba(0,0,0,0.85), transparent); display: flex; flex-direction: column; gap: 14px; align-items: center; }
     .slider-row { width: 85%; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #cbd5e1; }
     .slider-row input { flex: 1; accent-color: #38bdf8; }
     .btn-row { width: 100%; display: flex; justify-content: space-around; align-items: center; }
-    
-    /* 快门按钮 */
-    .shutter { width: 72px; height: 72px; border-radius: 50%; background: #38bdf8; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; color: #000; box-shadow: 0 4px 15px rgba(56,189,248,0.5); active: scale(0.92); }
+    .shutter { width: 72px; height: 72px; border-radius: 50%; background: #38bdf8; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; color: #000; box-shadow: 0 4px 15px rgba(56,189,248,0.5); }
     .shutter:active { transform: scale(0.92); }
     .sub-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 10px 14px; border-radius: 20px; font-size: 13px; }
-    
-    /* 吐司提示 */
-    .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: #22c55e; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; z-index: 50; display: none; border: 1px solid #22c55e; }
+    .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.85); color: #22c55e; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: bold; z-index: 50; display: none; border: 1px solid #22c55e; }
   </style>
 </head>
 <body>
   <div class="top-bar">
     <div class="status">
-      <div id="dot" class="dot"></div>
-      <span id="statusText">连接中...</span>
+      <div class="dot"></div>
+      <span id="statusText">v4 极速直连就绪</span>
     </div>
-    <button class="room-btn" id="roomBtn">暗号: 未设置</button>
+    <button class="room-btn" id="roomBtn">暗号: my888</button>
   </div>
 
   <div class="viewport">
@@ -70,65 +56,29 @@
     </div>
   </div>
 
-  <div id="toast" class="toast">⚡ 已秒传至 AI 网页</div>
+  <div id="toast" class="toast">? 已秒传</div>
   <canvas id="canvas" style="display:none"></canvas>
 
   <script>
-    // 1. 房间暗号管理（保存在本地，无需每次输入）
-    let roomCode = localStorage.getItem('ai_snap_room') || '';
-    if (!roomCode) {
-      roomCode = prompt('请输入配对暗号（与电脑/平板油猴脚本保持一致，如 my408）：', 'my408') || 'my408';
-      localStorage.setItem('ai_snap_room', roomCode);
-    }
+    let roomCode = localStorage.getItem('ai_snap_room') || 'my888';
     const roomBtn = document.getElementById('roomBtn');
     roomBtn.textContent = `暗号: ${roomCode}`;
     roomBtn.onclick = () => {
-      const next = prompt('修改配对暗号：', roomCode);
+      const next = prompt('修改配对暗号（与平板保持一致）：', roomCode);
       if (next && next.trim()) {
         roomCode = next.trim();
         localStorage.setItem('ai_snap_room', roomCode);
-        location.reload();
+        roomBtn.textContent = `暗号: ${roomCode}`;
       }
     };
 
-    // 2. 建立 MQTT over WebSocket 长连接
-    const dot = document.getElementById('dot');
-    const statusText = document.getElementById('statusText');
-    const topic = `ai-snap-bridge-v1/${roomCode}`;
-    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-      keepalive: 30,
-      reconnectPeriod: 1000
-    });
-
-    client.on('connect', () => {
-      dot.classList.add('online');
-      statusText.textContent = '通道已就绪';
-    });
-    client.on('offline', () => {
-      dot.classList.remove('online');
-      statusText.textContent = '重连中...';
-    });
-
-    // 3. 启动后置高清摄像头
     const video = document.getElementById('video');
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: false
-        });
-        video.srcObject = stream;
-      } catch (err) {
-        alert('摄像头开启失败，请确认使用 HTTPS 访问并授予相机权限：' + err.message);
-      }
-    }
-    initCamera();
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    }).then(stream => { video.srcObject = stream; })
+      .catch(err => alert('相机启动失败: ' + err.message));
 
-    // 4. 调节瞄准框高度（记忆上次习惯）
     const aimBox = document.getElementById('aimBox');
     const heightSlider = document.getElementById('heightSlider');
     const heightVal = document.getElementById('heightVal');
@@ -144,31 +94,50 @@
       localStorage.setItem('ai_snap_box_h', h);
     };
 
-    // 5. 核心：极速裁切 + 压缩 + 发送
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const toast = document.getElementById('toast');
 
-    function showToast(msg) {
+    function showToast(msg, isErr = false) {
       toast.textContent = msg;
+      toast.style.color = isErr ? '#ef4444' : '#22c55e';
+      toast.style.borderColor = isErr ? '#ef4444' : '#22c55e';
       toast.style.display = 'block';
-      setTimeout(() => { toast.style.display = 'none'; }, 1200);
+      setTimeout(() => { toast.style.display = 'none'; }, 1500);
+    }
+
+    // 使用免预检的简单 POST 请求直接发送二进制或 Base64
+    async function sendImage(canvasEl) {
+      showToast('?? 正在秒传...');
+      canvasEl.toBlob(async (blob) => {
+        if (!blob) return;
+        try {
+          const res = await fetch(`https://ntfy.sh/ai_snap_v4_${roomCode}`, {
+            method: 'POST',
+            body: blob
+          });
+          if (res.ok) {
+            if (navigator.vibrate) navigator.vibrate(40);
+            showToast(`? 已秒传 (${Math.round(blob.size / 1024)}KB)`);
+          } else {
+            showToast('发送受阻: ' + res.status, true);
+          }
+        } catch (e) {
+          showToast('网络异常，请检查连接', true);
+        }
+      }, 'image/jpeg', 0.75);
     }
 
     function captureAndSend(cropToBox = true) {
       if (!video.videoWidth) return;
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-
+      const vw = video.videoWidth, vh = video.videoHeight;
       let sx = 0, sy = 0, sw = vw, sh = vh;
 
       if (cropToBox) {
-        // 计算 video object-fit: cover 下的真实可视区域映射
         const viewRect = video.getBoundingClientRect();
         const boxRect = aimBox.getBoundingClientRect();
         const videoRatio = vw / vh;
         const viewRatio = viewRect.width / viewRect.height;
-
         let renderW, renderH, offsetX = 0, offsetY = 0;
         if (videoRatio > viewRatio) {
           renderH = viewRect.height;
@@ -179,7 +148,6 @@
           renderH = renderW / videoRatio;
           offsetY = (renderH - viewRect.height) / 2;
         }
-
         const scale = vw / renderW;
         sx = ((boxRect.left - viewRect.left) + offsetX) * scale;
         sy = ((boxRect.top - viewRect.top) + offsetY) * scale;
@@ -187,48 +155,29 @@
         sh = boxRect.height * scale;
       }
 
-      // 限制最大边长 1400px，保证公式清晰的同时体积 < 180KB
-      const maxDim = 1400;
+      const maxDim = 1100;
       const outScale = Math.min(1, maxDim / Math.max(sw, sh));
       canvas.width = Math.round(sw * outScale);
       canvas.height = Math.round(sh * outScale);
-
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
 
-      sendDataUrl(dataUrl);
-    }
-
-    function sendDataUrl(dataUrl) {
-      const payload = JSON.stringify({
-        ts: Date.now(),
-        dataUrl: dataUrl
-      });
-      client.publish(topic, payload, { qos: 0 }, (err) => {
-        if (!err) {
-          if (navigator.vibrate) navigator.vibrate(40);
-          showToast(`⚡ 已秒传 (${Math.round(dataUrl.length / 1024)}KB)`);
-        } else {
-          alert('发送失败，请检查网络');
-        }
-      });
+      sendImage(canvas);
     }
 
     document.getElementById('shootBtn').onclick = () => captureAndSend(true);
     document.getElementById('fullShootBtn').onclick = () => captureAndSend(false);
 
-    // 支持从系统相册/刚刚截好的图直接选图压缩秒发
     document.getElementById('fileInput').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const img = new Image();
       img.onload = () => {
-        const maxDim = 1400;
+        const maxDim = 1100;
         const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        sendDataUrl(canvas.toDataURL('image/jpeg', 0.8));
+        sendImage(canvas);
       };
       img.src = URL.createObjectURL(file);
       e.target.value = '';
